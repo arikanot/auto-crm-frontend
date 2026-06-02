@@ -1,6 +1,8 @@
 import { useAuthStore } from "../../../store/useAuthStore";
 import { useNavigate } from "react-router-dom";
 import { useClients } from "./hooks/useClients";
+import { AddClientModal } from "../../clients/AddClientModel";
+import { useState } from "react";
 
 export const Dashboard = () => {
   const { user, logout } = useAuthStore();
@@ -8,6 +10,7 @@ export const Dashboard = () => {
 
   // Подключаем наш новый хук данных
   const { data: clients, isLoading, isError } = useClients();
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -54,7 +57,10 @@ export const Dashboard = () => {
               Управление клиентами и привязанным автопарком
             </p>
           </div>
-          <button className="rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition-all cursor-pointer">
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition shadow-lg shadow-blue-600/20"
+          >
             + Добавить клиента
           </button>
         </div>
@@ -147,6 +153,10 @@ export const Dashboard = () => {
           </div>
         )}
       </main>
+      <AddClientModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   );
 };
