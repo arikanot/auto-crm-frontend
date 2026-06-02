@@ -21,28 +21,27 @@ export interface Client {
   created_at: string;
 }
 
-export const useClients = () => {
-  return useQuery<Client[]>({
-    queryKey: ["clients"],
+interface LaravelPagination {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+  data: any[]; // Тут наш массив клиентов
+}
+
+export const useClients = (search: string, page: number) => {
+  return useQuery<LaravelPagination>({
+    // <-- Указываем тип возвращаемых данных
+    queryKey: ["clients", { search, page }],
     queryFn: async () => {
-      try {
-        const response = await api.get("/api/clients");
-
-        // КРИТИЧЕСКИ ВАЖНО: Проверяем, что пришел именно массив
-        if (Array.isArray(response.data)) {
-          return response.data;
-        }
-
-        // Если пришел объект ошибки (например, с сообщением о сессии), выкидываем в catch
-        throw new Error(
-          response.data?.message || "Неверный формат данных бэкенда",
-        );
-      } catch (error) {
-        console.error("Ошибка при запросе клиентов:", error);
-        throw error;
-      }
+      const response = await api.get("/api/clients", {
+        params: {
+          search: search || undefined,
+          page: page,
+        },
+      });
+      return response.data;
     },
-    // Возвращаем пустой массив по умолчанию в случае сбоя, чтобы .map() не падал
-    initialData: [],
+    placeholderData: (previousData) => previousData, // Чтобы таблица не мигала белым при вводе
   });
 };
