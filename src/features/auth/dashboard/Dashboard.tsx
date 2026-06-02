@@ -96,6 +96,7 @@ export const Dashboard = () => {
                   {clients?.map((client) => (
                     <tr
                       key={client.id}
+                      onClick={() => navigate(`/clients/${client.id}`)}
                       className="hover:bg-slate-800/20 transition-colors"
                     >
                       {/* Имя */}

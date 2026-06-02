@@ -3,6 +3,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Login } from "./features/auth/Login";
 import { Dashboard } from "./features/auth/dashboard/Dashboard";
 import { AdminPanel } from "./features/auth/admin/AdminPanel";
+import { ClientDetail } from "./pages/ClientDetail";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         {/* Защищенные роуты для ВСЕХ сотрудников СТО (Доступно после логина) */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/clients/:id" element={<ClientDetail />} />
         </Route>
 
         {/* Защищенные роуты ТОЛЬКО для роли 'admin' */}

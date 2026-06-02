@@ -63,6 +63,7 @@ export const Login = () => {
           <p className="mt-2 text-sm text-slate-400">
             Панель управления автосервисом
           </p>
+          <p>admin@auto.com password</p>
         </div>
 
         <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
