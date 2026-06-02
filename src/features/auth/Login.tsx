@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { getCsrfCookie } from "../../api/axios";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const Login = () => {
   const [email, setEmail] = useState("");
@@ -11,6 +12,7 @@ export const Login = () => {
 
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
+  const queryClient = useQueryClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,14 +29,25 @@ export const Login = () => {
       // 3. Сохраняем пользователя в глобальный стейт Zustand
       setUser(response.data.user);
 
+      // 3. КРИТИЧЕСКИ ВАЖНО: Сбрасываем кэш запросов, чтобы React Query сделал СВЕЖИЙ запрос к API
+      await queryClient.invalidateQueries({ queryKey: ["clients"] });
+
       // 4. Перенаправляем на главную панель СТО
       navigate("/dashboard");
     } catch (err: any) {
       console.error(err);
-      if (err.response && err.response.data.errors) {
-        setError(Object.values(err.response.data.error)[0] as string);
-      } else {
-        setError("Неверный логин или пароль");
+
+      // Безопасная проверка: если Laravel вернул ошибки валидации полей
+      if (err.response && err.response.data && err.response.data.errors) {
+        setError(Object.values(err.response.data.errors)[0] as string);
+      }
+      // Если Laravel вернул стандартное сообщение (например, "Неверные учетные данные")
+      else if (err.response && err.response.data && err.response.data.message) {
+        setError(err.response.data.message);
+      }
+      // Если бэкенд вообще лежит
+      else {
+        setError("Неверный логин или пароль, либо бэкенд недоступен.");
       }
     } finally {
       setLoading(false);

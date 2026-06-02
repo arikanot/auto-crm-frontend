@@ -1,39 +1,27 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Login } from "./features/auth/Login";
-
-const DashboardPlaceholder = () => (
-  <div className="p-8">
-    <h1 className="text-3xl font-bold text-gray-800">Главная панель СТО</h1>
-    <p className="mt-2 text-gray-600">Вы успешно авторизовались в CRM!</p>
-  </div>
-);
-
-const AdminPlaceholder = () => (
-  <div className="p-8 bg-red-50 min-h-screen">
-    <h1 className="text-3xl font-bold text-red-700">Админка (Настройки СТО)</h1>
-    <p className="mt-2 text-red-600">Сюда имеет доступ ТОЛЬКО роль admin.</p>
-  </div>
-);
+import { Dashboard } from "./features/auth/dashboard/Dashboard";
+import { AdminPanel } from "./features/auth/admin/AdminPanel";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Публичные роуты */}
+        {/* Публичный роут: Авторизация */}
         <Route path="/login" element={<Login />} />
 
-        {/* Защищенные роуты для ВСЕХ сотрудников СТО */}
+        {/* Защищенные роуты для ВСЕХ сотрудников СТО (Доступно после логина) */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<DashboardPlaceholder />} />
+          <Route path="/dashboard" element={<Dashboard />} />
         </Route>
 
-        {/* Защищенные роуты ТОЛЬКО для Администратора */}
+        {/* Защищенные роуты ТОЛЬКО для роли 'admin' */}
         <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-          <Route path="/admin" element={<AdminPlaceholder />} />
+          <Route path="/admin" element={<AdminPanel />} />
         </Route>
 
-        {/* Авторедирект с любой неизвестной страницы на dashboard */}
+        {/* Автоматический редирект с любой неизвестной страницы на dashboard */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
