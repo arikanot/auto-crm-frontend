@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "../../store/useAuthStore"; // Проверь путь к стору auth
 import { useNavigate } from "react-router-dom";
 import { useRepairs } from "../auth/dashboard/hooks/useRepairs"; // Наш созданный хук
+import { useUpdateRepairStatus } from "../auth/dashboard/hooks/useUpdateRepairStatus";
 
 export const RepairsList = () => {
   const { user, logout } = useAuthStore();
@@ -34,6 +35,8 @@ export const RepairsList = () => {
     isLoading,
     isError,
   } = useRepairs(statusFilter, debouncedSearch, page);
+
+  const { mutate: updateStatus } = useUpdateRepairStatus();
 
   const repairs = paginationData?.data || [];
   const lastPage = paginationData?.last_page || 1;
@@ -259,12 +262,46 @@ export const RepairsList = () => {
                             </td>
 
                             {/* Статус */}
-                            <td className="px-6 py-4">
-                              <span
-                                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color}`}
+                            <td
+                              className="px-6 py-4"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {/* onClick с stopPropagation нужен, чтобы при клике на селект нас не перекидывало на страницу клиента */}
+                              <select
+                                value={repair.status}
+                                onChange={(e) =>
+                                  updateStatus({
+                                    repairId: repair.id,
+                                    status: e.target.value,
+                                  })
+                                }
+                                className={`rounded-lg border px-2 py-1 text-xs font-medium bg-slate-800 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer ${config.color}`}
                               >
-                                {config.text}
-                              </span>
+                                <option
+                                  value="pending"
+                                  className="bg-slate-900 text-yellow-400"
+                                >
+                                  Ожидает
+                                </option>
+                                <option
+                                  value="in_progress"
+                                  className="bg-slate-900 text-blue-400"
+                                >
+                                  В работе
+                                </option>
+                                <option
+                                  value="waiting_parts"
+                                  className="bg-slate-900 text-purple-400"
+                                >
+                                  Ждёт запчасти
+                                </option>
+                                <option
+                                  value="completed"
+                                  className="bg-slate-900 text-green-400"
+                                >
+                                  Готов
+                                </option>
+                              </select>
                             </td>
 
                             {/* Стоимость */}
