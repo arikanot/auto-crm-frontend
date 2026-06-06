@@ -51,6 +51,20 @@ export const Dashboard = () => {
             <span className="text-xl font-black tracking-tight text-blue-500">
               AutoShift
             </span>
+            <nav className="flex gap-4 text-sm font-medium">
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="text-blue-400 border-b-2 border-blue-500 pb-5 pt-5 font-semibold"
+              >
+                База клиентов
+              </button>
+              <button
+                onClick={() => navigate("/repairs")}
+                className="text-slate-400 hover:text-slate-200 transition"
+              >
+                Заказ-наряды
+              </button>
+            </nav>
             <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-semibold text-slate-200">

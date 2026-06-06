@@ -4,6 +4,7 @@ import { Login } from "./features/auth/Login";
 import { Dashboard } from "./features/auth/dashboard/Dashboard";
 import { AdminPanel } from "./features/auth/admin/AdminPanel";
 import { ClientDetail } from "./pages/ClientDetail";
+import { RepairsList } from "./features/repairs/RepairsList";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/clients/:id" element={<ClientDetail />} />
+          <Route path="/repairs" element={<RepairsList />} />
         </Route>
 
         {/* Защищенные роуты ТОЛЬКО для роли 'admin' */}
