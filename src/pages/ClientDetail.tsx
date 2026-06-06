@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/axios";
 import { AddCarModal } from "../features/clients/AddCarModel";
+import { useUpdateClient } from "../features/auth/dashboard/hooks/useUpdateClient";
 
 export const ClientDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +18,14 @@ export const ClientDetail = () => {
   const [status, setStatus] = useState("pending");
   const [selectedCarId, setSelectedCarId] = useState<number | null>(null);
   const [isCarModalOpen, setIsCarModalOpen] = useState(false);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editComment, setEditComment] = useState("");
+
+  const updateClientMutation = useUpdateClient();
 
   // Загрузка детальных данных клиента
   const {
@@ -33,6 +42,15 @@ export const ClientDetail = () => {
       return response.data;
     },
   });
+
+  React.useEffect(() => {
+    if (client) {
+      setEditName(client.name);
+      setEditPhone(client.phone);
+      setEditEmail(client.email || "");
+      setEditComment(client.comment || "");
+    }
+  }, [client]);
 
   // Мутация для добавления нового ремонта
   const addRepairMutation = useMutation({
@@ -59,6 +77,22 @@ export const ClientDetail = () => {
       parts_cost: partsCost ? parseFloat(partsCost) : 0,
       notes,
     });
+  };
+
+  const handleSaveProfile = () => {
+    if (!editName || !editPhone) return;
+    updateClientMutation.mutate(
+      {
+        id: Number(id),
+        name: editName,
+        phone: editPhone,
+        email: editEmail,
+        comment: editComment,
+      },
+      {
+        onSuccess: () => setIsEditing(false),
+      },
+    );
   };
 
   if (isLoading)
@@ -109,35 +143,120 @@ export const ClientDetail = () => {
         <div className="space-y-6 lg:col-span-1">
           {/* Профиль клиента */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-            <h2 className="text-xl font-bold mb-4 flex items-center text-teal-400">
-              Профиль клиента
-            </h2>
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="text-gray-400 block text-xs">ФИО</span>
-                <span className="text-base font-medium">{client.name}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block text-xs">Телефон</span>
-                <span className="text-base font-medium">{client.phone}</span>
-              </div>
-              {client.email && (
-                <div>
-                  <span className="text-gray-400 block text-xs">Email</span>
-                  <span className="text-base font-medium text-gray-300">
-                    {client.email}
-                  </span>
-                </div>
-              )}
-              {client.comment && (
-                <div>
-                  <span className="text-gray-400 block text-xs">Заметка</span>
-                  <p className="text-gray-300 bg-slate-900/50 p-2.5 rounded-lg mt-1 italic">
-                    {client.comment}
-                  </p>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-teal-400">
+                Профиль клиента
+              </h2>
+              {!isEditing ? (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-gray-300 transition cursor-pointer"
+                >
+                  Изменить
+                </button>
+              ) : (
+                <div className="space-x-2">
+                  <button
+                    onClick={() => {
+                      // Сброс к исходным значениям
+                      setEditName(client.name);
+                      setEditPhone(client.phone);
+                      setEditEmail(client.email || "");
+                      setEditComment(client.comment || "");
+                      setIsEditing(false);
+                    }}
+                    className="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-gray-300 transition cursor-pointer"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    onClick={handleSaveProfile}
+                    disabled={updateClientMutation.isPending}
+                    className="text-xs bg-teal-600 hover:bg-teal-500 px-2.5 py-1 rounded-lg text-white font-medium transition cursor-pointer disabled:opacity-50"
+                  >
+                    {updateClientMutation.isPending ? "..." : "Сохранить"}
+                  </button>
                 </div>
               )}
             </div>
+
+            {!isEditing ? (
+              // Обычный режим просмотра
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-gray-400 block text-xs">ФИО</span>
+                  <span className="text-base font-medium">{client.name}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-xs">Телефон</span>
+                  <span className="text-base font-medium">{client.phone}</span>
+                </div>
+                {client.email && (
+                  <div>
+                    <span className="text-gray-400 block text-xs">Email</span>
+                    <span className="text-base font-medium text-gray-300">
+                      {client.email}
+                    </span>
+                  </div>
+                )}
+                {client.comment && (
+                  <div>
+                    <span className="text-gray-400 block text-xs">Заметка</span>
+                    <p className="text-gray-300 bg-slate-900/50 p-2.5 rounded-lg mt-1 italic">
+                      {client.comment}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Режим редактирования
+              <div className="space-y-3 text-sm">
+                <div>
+                  <label className="text-gray-400 block text-xs mb-1">
+                    ФИО *
+                  </label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 block text-xs mb-1">
+                    Телефон *
+                  </label>
+                  <input
+                    type="text"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 block text-xs mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 block text-xs mb-1">
+                    Заметка
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editComment}
+                    onChange={(e) => setEditComment(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-teal-500 italic"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Автопарк */}
