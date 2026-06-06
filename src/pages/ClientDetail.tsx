@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/axios";
+import { AddCarModal } from "../features/clients/AddCarModel";
 
 export const ClientDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -15,8 +16,9 @@ export const ClientDetail = () => {
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState("pending");
   const [selectedCarId, setSelectedCarId] = useState<number | null>(null);
+  const [isCarModalOpen, setIsCarModalOpen] = useState(false);
 
-  // Загрузка детальных данных клиента из нашего нового эндпоинта show
+  // Загрузка детальных данных клиента
   const {
     data: client,
     isLoading,
@@ -25,7 +27,6 @@ export const ClientDetail = () => {
     queryKey: ["client", id],
     queryFn: async () => {
       const response = await api.get(`/api/clients/${id}`);
-      // Автоматически выберем первую машину клиента для формы, если она есть
       if (response.data.cars?.length > 0) {
         setSelectedCarId(response.data.cars[0].id);
       }
@@ -33,7 +34,7 @@ export const ClientDetail = () => {
     },
   });
 
-  // Мутация для добавления нового ремонта (Бэкенд эндпоинт напишем на следующем шаге, пока подготовим фронт)
+  // Мутация для добавления нового ремонта
   const addRepairMutation = useMutation({
     mutationFn: (newRepair: any) => api.post("/api/repairs", newRepair),
     onSuccess: () => {
@@ -66,6 +67,7 @@ export const ClientDetail = () => {
         Загрузка карточки клиента...
       </div>
     );
+
   if (isError || !client)
     return (
       <div className="p-6 text-center text-red-400">
@@ -73,7 +75,6 @@ export const ClientDetail = () => {
       </div>
     );
 
-  // Маппинг статусов для красивого отображения тегов
   const statusLabels: Record<string, { text: string; color: string }> = {
     pending: {
       text: "Ожидает",
@@ -104,9 +105,9 @@ export const ClientDetail = () => {
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ЛЕВАЯ КОЛОНКА: Данные клиента и авто */}
+        {/* ЛЕВАЯ КОЛОНКА */}
         <div className="space-y-6 lg:col-span-1">
-          {/* Карточка владельца */}
+          {/* Профиль клиента */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
             <h2 className="text-xl font-bold mb-4 flex items-center text-teal-400">
               Профиль клиента
@@ -139,32 +140,43 @@ export const ClientDetail = () => {
             </div>
           </div>
 
-          {/* Карточка автомобилей */}
+          {/* Автопарк */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-            <h2 className="text-xl font-bold mb-4 text-teal-400">Автопарк</h2>
-            {client.cars?.map((car: any) => (
-              <div
-                key={car.id}
-                className="bg-slate-900 p-4 rounded-lg border border-slate-700 space-y-2"
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-teal-400">Автопарк</h2>
+              <button
+                onClick={() => setIsCarModalOpen(true)}
+                className="bg-teal-600/20 hover:bg-teal-600/40 text-teal-400 px-2.5 py-1 rounded-lg text-xs font-semibold border border-teal-500/30 transition cursor-pointer"
               >
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-lg">
-                    {car.brand} {car.model}
-                  </span>
-                  <span className="bg-teal-500/10 text-teal-400 text-xs px-2 py-1 rounded font-mono border border-teal-500/20">
-                    {car.number_plate || "БЕЗ НОМЕРА"}
-                  </span>
-                </div>
-                <div className="text-xs text-gray-400 flex justify-between">
-                  <span>Год выпуска: {car.year || "—"}</span>
-                  <span>VIN: {car.vin || "—"}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+                + Добавить авто
+              </button>
+            </div>
 
-        {/* ПРАВАЯ КОЛОНКА: История ремонтов и создание заказ-наряда */}
+            <div className="space-y-3">
+              {client.cars?.map((car: any) => (
+                <div
+                  key={car.id}
+                  className="bg-slate-900 p-4 rounded-lg border border-slate-700 space-y-2"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-lg">
+                      {car.brand} {car.model}
+                    </span>
+                    <span className="bg-teal-500/10 text-teal-400 text-xs px-2 py-1 rounded font-mono border border-teal-500/20">
+                      {car.number_plate || "БЕЗ НОМЕРА"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-400 flex justify-between">
+                    <span>Год: {car.year || "—"}</span>
+                    <span>VIN: {car.vin || "—"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>{" "}
+        {/* <-- ВОТ ЭТОТ ТЕГ БЫЛ ПОТЕРЯН (закрывает левую колонку) */}
+        {/* ПРАВАЯ КОЛОНКА */}
         <div className="lg:col-span-2 space-y-6">
           {/* Форма нового ремонта */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
@@ -177,30 +189,31 @@ export const ClientDetail = () => {
             >
               <div className="md:col-span-2">
                 <label className="block text-xs text-gray-400 mb-1">
-                  Что нужно сделать / Поломка *
+                  Что нужно сделать *
                 </label>
                 <input
                   type="text"
                   required
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="Замена тормозных колодок, диагностика подвески"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
+                  placeholder="Замена колодок, диагностика подвески"
                 />
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">
-                  Статус ремонта
+                  Выбрать авто
                 </label>
                 <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500"
+                  value={selectedCarId || ""}
+                  onChange={(e) => setSelectedCarId(Number(e.target.value))}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
                 >
-                  <option value="pending">Ожидает</option>
-                  <option value="in_progress">В работе</option>
-                  <option value="waiting_parts">Ждет запчасти</option>
-                  <option value="completed">Готов</option>
+                  {client.cars?.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.brand} {c.model}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -211,7 +224,7 @@ export const ClientDetail = () => {
                   type="number"
                   value={laborCost}
                   onChange={(e) => setLaborCost(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
                   placeholder="0"
                 />
               </div>
@@ -223,7 +236,7 @@ export const ClientDetail = () => {
                   type="number"
                   value={partsCost}
                   onChange={(e) => setPartsCost(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
                   placeholder="0"
                 />
               </div>
@@ -231,7 +244,7 @@ export const ClientDetail = () => {
                 <button
                   type="submit"
                   disabled={addRepairMutation.isPending}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 cursor-pointer"
                 >
                   {addRepairMutation.isPending
                     ? "Добавление..."
@@ -240,29 +253,27 @@ export const ClientDetail = () => {
               </div>
               <div className="md:col-span-3">
                 <label className="block text-xs text-gray-400 mb-1">
-                  Заметки мастера / Список деталей
+                  Заметки мастера
                 </label>
                 <textarea
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="Колодки Brembo, артикул..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
+                  placeholder="Детали, артикулы..."
                 />
               </div>
             </form>
           </div>
 
-          {/* История заказ-нарядов */}
+          {/* История обслуживания */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
             <h2 className="text-xl font-bold mb-4 text-gray-200">
               История обслуживания
             </h2>
-
-            {/* Собираем все ремонты со всех машин клиента */}
             {client.cars?.flatMap((c: any) => c.repairs || []).length === 0 ? (
               <p className="text-gray-500 text-sm py-4 italic text-center">
-                История ремонтов пуста. Этот клиент у нас впервые.
+                История ремонтов пуста.
               </p>
             ) : (
               <div className="space-y-4">
@@ -275,7 +286,6 @@ export const ClientDetail = () => {
                     const totalCost =
                       parseFloat(repair.labor_cost) +
                       parseFloat(repair.parts_cost);
-
                     return (
                       <div
                         key={repair.id}
@@ -296,13 +306,11 @@ export const ClientDetail = () => {
                             {currentStatus.text}
                           </span>
                         </div>
-
                         {repair.notes && (
                           <p className="text-sm text-gray-400 bg-slate-850 p-2 rounded border border-slate-800 italic">
                             {repair.notes}
                           </p>
                         )}
-
                         <div className="flex justify-between items-center text-xs text-gray-400 pt-2 border-t border-slate-800">
                           <div className="space-x-4">
                             <span>
@@ -331,6 +339,12 @@ export const ClientDetail = () => {
           </div>
         </div>
       </div>
+
+      <AddCarModal
+        isOpen={isCarModalOpen}
+        onClose={() => setIsCarModalOpen(false)}
+        clientId={Number(id)}
+      />
     </div>
   );
 };
