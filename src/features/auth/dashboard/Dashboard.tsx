@@ -64,6 +64,12 @@ export const Dashboard = () => {
               >
                 Заказ-наряды
               </button>
+              <button
+                onClick={() => navigate("/parts")}
+                className="text-slate-400 hover:text-slate-200 transition"
+              >
+                Склад
+              </button>
             </nav>
             <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">

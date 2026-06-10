@@ -5,6 +5,7 @@ import { Dashboard } from "./features/auth/dashboard/Dashboard";
 import { AdminPanel } from "./features/auth/admin/AdminPanel";
 import { ClientDetail } from "./pages/ClientDetail";
 import { RepairsList } from "./features/repairs/RepairsList";
+import { PartsList } from "./features/parts/PartsList";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/clients/:id" element={<ClientDetail />} />
           <Route path="/repairs" element={<RepairsList />} />
+          <Route path="/parts" element={<PartsList />} />
         </Route>
 
         {/* Защищенные роуты ТОЛЬКО для роли 'admin' */}
