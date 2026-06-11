@@ -3,8 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/axios";
 import { AddCarModal } from "../features/clients/AddCarModel";
-import { useUpdateClient } from "../features/auth/dashboard/hooks/useUpdateClient";
-import { useSearchParts } from "../features/auth/dashboard/hooks/useParts";
 
 interface SelectedPartItem {
   id: number;
@@ -20,7 +18,10 @@ export const ClientDetail = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Состояния для формы нового ремонта
+  // Идентификатор редактируемого заказ-наряда (null — создание нового)
+  const [editingRepairId, setEditingRepairId] = useState<number | null>(null);
+
+  // Состояния для формы ремонта
   const [description, setDescription] = useState("");
   const [laborCost, setLaborCost] = useState("");
   const [notes, setNotes] = useState("");
@@ -33,16 +34,18 @@ export const ClientDetail = () => {
   const [selectedParts, setSelectedParts] = useState<SelectedPartItem[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  const { data: foundParts = [] } = useSearchParts(partSearch);
-
-  // Состояния редактирования профиля
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editComment, setEditComment] = useState("");
-
-  const updateClientMutation = useUpdateClient();
+  // Мгновенный поиск запчастей внутри компонента
+  const { data: foundParts = [] } = useQuery({
+    queryKey: ["parts-search", partSearch],
+    queryFn: async () => {
+      if (!partSearch || partSearch.length < 2) return [];
+      const response = await api.get("/api/parts", {
+        params: { search: partSearch },
+      });
+      return response.data.data || [];
+    },
+    enabled: partSearch.length >= 2,
+  });
 
   // Загрузка детальных данных клиента
   const {
@@ -53,35 +56,34 @@ export const ClientDetail = () => {
     queryKey: ["client", id],
     queryFn: async () => {
       const response = await api.get(`/api/clients/${id}`);
-      if (response.data.cars?.length > 0 && !selectedCarId) {
+      // Выбираем машину по умолчанию ТОЛЬКО если мы не в режиме редактирования старого заказа
+      if (response.data.cars?.length > 0 && !editingRepairId) {
         setSelectedCarId(response.data.cars[0].id);
       }
       return response.data;
     },
   });
 
-  React.useEffect(() => {
-    if (client) {
-      setEditName(client.name);
-      setEditPhone(client.phone);
-      setEditEmail(client.email || "");
-      setEditComment(client.comment || "");
-    }
-  }, [client]);
-
-  // Закрытие дропдауна при клике в любом месте экрана
+  // Глобальный клик для закрытия автокомплита
   React.useEffect(() => {
     const handleOutsideClick = () => setShowDropdown(false);
     window.addEventListener("click", handleOutsideClick);
     return () => window.removeEventListener("click", handleOutsideClick);
   }, []);
 
-  // Мутация для добавления нового ремонта
-  const addRepairMutation = useMutation({
-    mutationFn: (newRepair: any) => api.post("/api/repairs", newRepair),
+  // Мутация для отправки (создание или обновление)
+  const submitRepairMutation = useMutation({
+    mutationFn: (payload: any) => {
+      if (editingRepairId) {
+        return api.put(`/api/repairs/${editingRepairId}`, payload);
+      }
+      return api.post("/api/repairs", payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client", id] });
       queryClient.invalidateQueries({ queryKey: ["parts"] });
+      // Полный сброс формы
+      setEditingRepairId(null);
       setDescription("");
       setLaborCost("");
       setNotes("");
@@ -90,7 +92,22 @@ export const ClientDetail = () => {
     },
     onError: (error: any) => {
       alert(
-        error.response?.data?.message || "Ошибка при создании заказ-наряда",
+        error.response?.data?.message || "Ошибка при сохранении заказ-наряда",
+      );
+    },
+  });
+
+  // Мутация для удаления заказ-наряда
+  const deleteRepairMutation = useMutation({
+    mutationFn: (repairId: number) => api.delete(`/api/repairs/${repairId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", id] });
+      queryClient.invalidateQueries({ queryKey: ["parts"] });
+      alert("Заказ-наряд успешно удален. Запчасти возвращены на склад.");
+    },
+    onError: (error: any) => {
+      alert(
+        error.response?.data?.message || "Ошибка при удалении заказ-наряда",
       );
     },
   });
@@ -104,35 +121,65 @@ export const ClientDetail = () => {
       quantity: p.quantity,
     }));
 
-    addRepairMutation.mutate({
+    submitRepairMutation.mutate({
       car_id: selectedCarId,
       description,
       status,
       labor_cost: laborCost ? parseFloat(laborCost) : 0,
-      parts: partsPayload,
       notes,
+      parts: partsPayload,
     });
   };
 
-  const handleSaveProfile = () => {
-    if (!editName || !editPhone) return;
-    updateClientMutation.mutate(
-      {
-        id: Number(id),
-        name: editName,
-        phone: editPhone,
-        email: editEmail,
-        comment: editComment,
-      },
-      {
-        onSuccess: () => setIsEditing(false),
-      },
-    );
+  const handleStartEditRepair = (repair: any) => {
+    setEditingRepairId(repair.id);
+    setDescription(repair.description || "");
+    setLaborCost(repair.labor_cost ? repair.labor_cost.toString() : "0");
+    setNotes(repair.notes || "");
+    setStatus(repair.status || "pending");
+
+    if (repair.car_id) {
+      setSelectedCarId(repair.car_id);
+    }
+
+    if (repair.parts && repair.parts.length > 0) {
+      const mappedParts = repair.parts.map((p: any) => {
+        const priceAtSale = p.pivot?.price_at_sale
+          ? parseFloat(p.pivot.price_at_sale)
+          : parseFloat(p.selling_price);
+        const qtyInRepair = p.pivot?.quantity ? parseInt(p.pivot.quantity) : 1;
+
+        return {
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          selling_price: priceAtSale,
+          quantity: qtyInRepair,
+          stock_quantity: (p.stock_quantity || 0) + qtyInRepair,
+        };
+      });
+      setSelectedParts(mappedParts);
+    } else {
+      setSelectedParts([]);
+    }
+
+    setPartSearch("");
+    setShowDropdown(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDeleteRepair = (repairId: number) => {
+    if (
+      window.confirm(
+        "Вы уверены, что хотите удалить этот заказ-наряд? Все запчасти вернутся на склад.",
+      )
+    ) {
+      deleteRepairMutation.mutate(repairId);
+    }
   };
 
   const handleSelectPart = (part: any) => {
     if (selectedParts.some((p) => p.id === part.id)) return;
-
     setSelectedParts([
       ...selectedParts,
       {
@@ -167,7 +214,6 @@ export const ClientDetail = () => {
     0,
   );
 
-  // === ВСЕ ПРОВЕРКИ СТАТУСОВ ПЕРЕНЕСЕНЫ СЮДА (ПОСЛЕ ВСЕХ ХУКОВ!) ===
   if (isLoading)
     return (
       <div className="p-6 text-center text-gray-400">
@@ -177,7 +223,7 @@ export const ClientDetail = () => {
   if (isError || !client)
     return (
       <div className="p-6 text-center text-red-400">
-        Ошибка: Клиент не найден на сервере (500/404).
+        Ошибка: Клиент не найден.
       </div>
     );
 
@@ -204,121 +250,47 @@ export const ClientDetail = () => {
     <div className="p-6 bg-slate-900 min-h-screen text-white">
       <button
         onClick={() => navigate("/dashboard")}
-        className="mb-6 flex items-center text-sm text-gray-400 hover:text-white transition cursor-pointer"
+        className="mb-6 flex items-center text-sm text-gray-400 hover:text-white transition"
       >
         &larr; Вернуться в базу
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ЛЕВАЯ КОЛОНКА */}
         <div className="space-y-6 lg:col-span-1">
+          {/* Профиль */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-teal-400">
-                Профиль клиента
-              </h2>
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-gray-300 transition cursor-pointer"
-                >
-                  Изменить
-                </button>
-              ) : (
-                <div className="space-x-2">
-                  <button
-                    onClick={() => setIsEditing(false)}
-                    className="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-gray-300 transition cursor-pointer"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    onClick={handleSaveProfile}
-                    className="text-xs bg-teal-600 hover:bg-teal-500 px-2.5 py-1 rounded-lg text-white transition cursor-pointer"
-                  >
-                    Сохранить
-                  </button>
+            <h2 className="text-xl font-bold mb-4 flex items-center text-teal-400">
+              Профиль клиента
+            </h2>
+            <div className="space-y-3 text-sm">
+              <div>
+                <span className="text-gray-400 block text-xs">ФИО</span>
+                <span className="text-base font-medium">{client.name}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-xs">Телефон</span>
+                <span className="text-base font-medium">{client.phone}</span>
+              </div>
+              {client.email && (
+                <div>
+                  <span className="text-gray-400 block text-xs">Email</span>
+                  <span className="text-base font-medium text-gray-300">
+                    {client.email}
+                  </span>
+                </div>
+              )}
+              {client.comment && (
+                <div>
+                  <span className="text-gray-400 block text-xs">Заметка</span>
+                  <p className="text-gray-300 bg-slate-900/50 p-2.5 rounded-lg mt-1 italic">
+                    {client.comment}
+                  </p>
                 </div>
               )}
             </div>
-
-            {!isEditing ? (
-              <div className="space-y-3 text-sm">
-                <div>
-                  <span className="text-gray-400 block text-xs">ФИО</span>
-                  <span className="text-base font-medium">{client.name}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block text-xs">Телефон</span>
-                  <span className="text-base font-medium">{client.phone}</span>
-                </div>
-                {client.email && (
-                  <div>
-                    <span className="text-gray-400 block text-xs">Email</span>
-                    <span className="text-base font-medium text-gray-300">
-                      {client.email}
-                    </span>
-                  </div>
-                )}
-                {client.comment && (
-                  <div>
-                    <span className="text-gray-400 block text-xs">Заметка</span>
-                    <p className="text-gray-300 bg-slate-900/50 p-2.5 rounded-lg mt-1 italic">
-                      {client.comment}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3 text-sm">
-                <div>
-                  <label className="text-gray-400 block text-xs mb-1">
-                    ФИО *
-                  </label>
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-teal-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-gray-400 block text-xs mb-1">
-                    Телефон *
-                  </label>
-                  <input
-                    type="text"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-teal-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-gray-400 block text-xs mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-teal-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-gray-400 block text-xs mb-1">
-                    Заметка
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={editComment}
-                    onChange={(e) => setEditComment(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-teal-500 italic"
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
+          {/* Автопарк */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-teal-400">Автопарк</h2>
@@ -344,7 +316,7 @@ export const ClientDetail = () => {
                     </span>
                   </div>
                   <div className="text-xs text-gray-400 flex justify-between">
-                    <span>Год: {car.year || "—"}</span>
+                    <span>Год выпуска: {car.year || "—"}</span>
                     <span>VIN: {car.vin || "—"}</span>
                   </div>
                 </div>
@@ -353,17 +325,20 @@ export const ClientDetail = () => {
           </div>
         </div>
 
-        {/* ПРАВАЯ КОЛОНКА */}
+        {/* Правая колонка: Форма и История */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Форма */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
             <h2 className="text-xl font-bold mb-4 text-blue-400">
-              Открыть новый заказ-наряд
+              {editingRepairId
+                ? `Редактирование заказ-наряда №${editingRepairId}`
+                : "Открыть новый заказ-наряд"}
             </h2>
             <form onSubmit={handleAddRepair} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-xs text-gray-400 mb-1">
-                    Что нужно сделать *
+                    Что нужно сделать / Поломка *
                   </label>
                   <input
                     type="text"
@@ -371,31 +346,30 @@ export const ClientDetail = () => {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
-                    placeholder="Замена масла, диагностика ДВС"
+                    placeholder="Замена тормозных колодок..."
                   />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">
-                    Выбрать авто
+                    Статус ремонта
                   </label>
                   <select
-                    value={selectedCarId || ""}
-                    onChange={(e) => setSelectedCarId(Number(e.target.value))}
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
                   >
-                    {client.cars?.map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.brand} {c.model}
-                      </option>
-                    ))}
+                    <option value="pending">Ожидает</option>
+                    <option value="in_progress">В работе</option>
+                    <option value="waiting_parts">Ждет запчасти</option>
+                    <option value="completed">Готов</option>
                   </select>
                 </div>
               </div>
 
-              {/* ПОДБОР ЗАПЧАСТЕЙ СО СКЛАДА */}
+              {/* Автокомплит поиска запчастей */}
               <div className="relative" onClick={(e) => e.stopPropagation()}>
                 <label className="block text-xs text-gray-400 mb-1">
-                  Подобрать запчасти со склада
+                  Подобрать запчасти со склада (введите название или артикул)
                 </label>
                 <input
                   type="text"
@@ -445,7 +419,7 @@ export const ClientDetail = () => {
                 )}
               </div>
 
-              {/* Список выбранных деталей */}
+              {/* Интерактивная спецификация выбранных деталей */}
               {selectedParts.length > 0 && (
                 <div className="bg-slate-900/60 rounded-xl p-4 border border-slate-700/50 space-y-2">
                   {selectedParts.map((part) => (
@@ -495,6 +469,7 @@ export const ClientDetail = () => {
                 </div>
               )}
 
+              {/* Стоимость и Кнопки */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">
@@ -523,29 +498,47 @@ export const ClientDetail = () => {
                     ₽
                   </div>
                 </div>
-                <div className="flex items-end">
+                <div className="flex flex-col justify-end">
                   <button
                     type="submit"
-                    disabled={addRepairMutation.isPending}
+                    disabled={submitRepairMutation.isPending}
                     className="w-full bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 cursor-pointer"
                   >
-                    {addRepairMutation.isPending
-                      ? "Добавление..."
-                      : "Открыть заказ-наряд"}
+                    {submitRepairMutation.isPending
+                      ? "Сохранение..."
+                      : editingRepairId
+                        ? "Сохранить изменения"
+                        : "Добавить работу"}
                   </button>
+                  {editingRepairId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingRepairId(null);
+                        setDescription("");
+                        setLaborCost("");
+                        setNotes("");
+                        setStatus("pending");
+                        setSelectedParts([]);
+                      }}
+                      className="w-full mt-2 bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg text-xs transition cursor-pointer"
+                    >
+                      Отменить редактирование
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div className="pt-1">
                 <label className="block text-xs text-gray-400 mb-1">
-                  Заметки мастера
+                  Заметки мастера / Список деталей
                 </label>
                 <textarea
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 text-white"
-                  placeholder="Рекомендации..."
+                  placeholder="Колодки Brembo, артикул..."
                 />
               </div>
             </form>
@@ -556,9 +549,10 @@ export const ClientDetail = () => {
             <h2 className="text-xl font-bold mb-4 text-gray-200">
               История обслуживания
             </h2>
+
             {client.cars?.flatMap((c: any) => c.repairs || []).length === 0 ? (
               <p className="text-gray-500 text-sm py-4 italic text-center">
-                История ремонтов пуста.
+                История ремонтов пуста. Этот client у нас впервые.
               </p>
             ) : (
               <div className="space-y-4">
@@ -568,60 +562,98 @@ export const ClientDetail = () => {
                       text: repair.status,
                       color: "bg-slate-700 text-white",
                     };
+
                     return (
                       <div
                         key={repair.id}
-                        className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3"
+                        className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 text-left"
                       >
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-semibold text-base">
+                            <p className="font-semibold text-base text-slate-100">
                               {repair.description}
                             </p>
                             <p className="text-xs text-gray-400 mt-0.5">
-                              Авто: {c.brand} {c.model} ({c.number_plate})
+                              Авто: {c.brand} {c.model} (
+                              {c.number_plate || "БЕЗ НОМЕРА"})
                             </p>
                           </div>
-                          <span
-                            className={`text-xs px-2.5 py-1 rounded-full font-medium border ${currentStatus.color}`}
-                          >
-                            {currentStatus.text}
-                          </span>
+                          <div className="flex flex-col items-end gap-2">
+                            <span
+                              className={`text-xs px-2.5 py-1 rounded-full font-medium border ${currentStatus.color}`}
+                            >
+                              {currentStatus.text}
+                            </span>
+                            <div className="flex gap-2 text-xs text-gray-500">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditRepair(repair)}
+                                className="hover:text-blue-400 transition cursor-pointer text-blue-500"
+                              >
+                                Редактировать
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRepair(repair.id)}
+                                className="hover:text-red-400 transition cursor-pointer text-red-500"
+                              >
+                                Удалить
+                              </button>
+                            </div>
+                          </div>
                         </div>
 
-                        {repair.parts && repair.parts.length > 0 && (
-                          <div className="bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 text-xs space-y-1">
-                            <span className="text-gray-500 font-semibold block mb-1">
-                              Установленные запчасти:
+                        {/* НАГЛЯДНЫЙ СПИСОК ЗАПЧАСТЕЙ ПРЯМО В КАРТОЧКЕ */}
+                        {repair.parts && repair.parts.length > 0 ? (
+                          <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                            <span className="text-gray-400 font-semibold block text-[11px] uppercase tracking-wider">
+                              Использованные запчасти:
                             </span>
-                            {repair.parts.map((part: any) => (
-                              <div
-                                key={part.id}
-                                className="flex justify-between text-gray-300"
-                              >
-                                <span>
-                                  • {part.name}{" "}
-                                  <span className="text-gray-500 font-mono text-[10px]">
-                                    [{part.sku}]
-                                  </span>{" "}
-                                  x{part.pivot.quantity} шт
-                                </span>
-                                <span className="font-medium text-slate-400">
-                                  {(
-                                    parseFloat(part.pivot.price_at_sale) *
-                                    part.pivot.quantity
-                                  ).toLocaleString()}{" "}
-                                  ₽
-                                </span>
-                              </div>
-                            ))}
+                            {repair.parts.map((part: any, idx: number) => {
+                              const qty = part.pivot?.quantity
+                                ? parseInt(part.pivot.quantity)
+                                : 1;
+                              const price = part.pivot?.price_at_sale
+                                ? parseFloat(part.pivot.price_at_sale)
+                                : parseFloat(part.selling_price);
+
+                              return (
+                                <div
+                                  key={part.id || idx}
+                                  className="flex justify-between items-center text-xs text-slate-300 bg-slate-900/40 px-2 py-1 rounded"
+                                >
+                                  <div>
+                                    <span className="text-gray-500 font-mono mr-1.5">
+                                      [{part.sku || "—"}]
+                                    </span>
+                                    <span className="font-medium">
+                                      {part.name}
+                                    </span>
+                                  </div>
+                                  <div className="text-slate-400 font-mono">
+                                    {qty} шт × {price.toLocaleString()} ₽ ={" "}
+                                    <span className="text-teal-400 font-bold">
+                                      {(qty * price).toLocaleString()} ₽
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-500 italic bg-slate-950/30 p-2 rounded text-center border border-dashed border-slate-800">
+                            Запчасти со склада не списывались (только
+                            услуги/работа)
                           </div>
                         )}
 
                         {repair.notes && (
-                          <p className="text-sm text-gray-400 bg-slate-850 p-2 rounded border border-slate-800 italic">
+                          <div className="text-sm text-gray-400 bg-slate-950/30 p-2.5 rounded border border-slate-800 italic">
+                            <span className="text-[10px] text-gray-500 block font-sans not-italic font-bold uppercase">
+                              Заметки:
+                            </span>
                             {repair.notes}
-                          </p>
+                          </div>
                         )}
 
                         <div className="flex justify-between items-center text-xs text-gray-400 pt-2 border-t border-slate-800">
@@ -629,17 +661,19 @@ export const ClientDetail = () => {
                             <span>
                               Работа:{" "}
                               <strong className="text-gray-200">
-                                {repair.labor_cost} ₽
+                                {parseFloat(repair.labor_cost).toLocaleString()}{" "}
+                                ₽
                               </strong>
                             </span>
                             <span>
                               Запчасти:{" "}
                               <strong className="text-gray-200">
-                                {repair.parts_cost} ₽
+                                {parseFloat(repair.parts_cost).toLocaleString()}{" "}
+                                ₽
                               </strong>
                             </span>
                           </div>
-                          <div className="text-sm font-bold text-teal-400">
+                          <div className="text-base font-bold text-teal-400">
                             Итого:{" "}
                             {(
                               parseFloat(repair.labor_cost) +
@@ -657,7 +691,6 @@ export const ClientDetail = () => {
           </div>
         </div>
       </div>
-
       <AddCarModal
         isOpen={isCarModalOpen}
         onClose={() => setIsCarModalOpen(false)}
